@@ -155,7 +155,40 @@ A short description of the project.
 
 ## Data pipeline Workflow
 
-## Project Architecture
+The data preparation follows a reproducible workflow executed in `notebooks/1.0-data-cleaning.ipynb`. The original file (`data/raw/leads_seed.csv`) remains strictly immutable, generating a standardized dataset at `data/interim/leads_cleaned.csv`.
+
+### Step 1: Structure Normalization
+
+- **Column Standardization:** Mapped HubSpot-style title headers into clean, lowercase `snake_case` identifiers (`record_id`, `first_name`, `last_name`, `full_name`, `email`, `phone_number`, `lead_status`, `notes`, etc.).
+- **Dead Column Pruning:** Identified and pruned unused HubSpot CRM export columns having >95% missing values (`City`, `Original Source Drill-Down 1`, `Annual Revenue`, `Marketing contact status`, `GDPR consent`, `Lead Score`).
+
+### Step 2: Validity Checks
+
+- **Lead Status Normalization:** Cleaned whitespace and casing inconsistencies (`New`, `new`, `NEW`, `" New"`) into standardized title-case values (`New`, `Contacted`, `Connected`, `Qualified`, `Opportunity`, `Closed Won`, `Closed Lost`).
+- **Email Sanity:** Validated all 2,049 emails using regex format matching after lowercase conversion and whitespace trimming (100% valid format rate).
+- **Phone Digit Extraction:** Extracted normalized numerical sequences (`phone_digits`) for indexing and downstream candidate blocking.
+- **Temporal Ordering:** Parsed mixed date formats (`2026-06-02`, `6/4/2026`, `2026-05-20T00:00:00Z`) into UTC timestamps;
+
+### Step 3: Duplicate Screening & Candidate Blocking
+
+- **Exact Duplicates & ID Collisions:** Verified 0 full-row exact duplicates and 0 duplicate `record_id` values.
+- **Near-Duplicate Surfacing:** Blocked on normalized phone digits and lowercased email addresses:
+  - 58 email addresses appear more than once.
+  - 232 phone digit fingerprints appear across multiple records with slight variations in name spelling or company legal suffix.
+- **Duplicate Handling:** We do not drop anything here, we preserved all records for the AI deduplication scoring stage.
+
+### Step 4: Missing Data & Name Resolution
+
+- **Lossless Name Resolution:**
+  - If `first_name` and `last_name` exist, synthesized `full_name`.
+  - If only `full_name` is present, parsed into `first_name` and `last_name`.
+- **Categorical Imputation:** Defaulted empty optional fields (`contact_owner` to `Unassigned`, `country` to `Unknown`, empty strings for optional text fields).
+
+### Step 5: Outliers and Anomalies
+
+- **Phone Digit Lengths:** Audited digit distributions (standard lengths 10 to 13 digits); verified 0 truncated phone strings (<7 digits).
+- **Temporal Bounds:** Confirmed all creation dates sit within expected range (September 2025 to June 2026) with 0 future-dated records.
+- **Notes Lengths:** Inspected character lengths across the free-text `notes` field (mean ~74 chars, min 33, max 160) ensuring all records contain parseable source context.
 
 ## Project Organization
 
