@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from api.routes.dashboard import router as dashboard_router
 from api.routes.dedup import router as dedup_router
 from api.routes.leads import router as leads_router
+from api.routes.source_extract import router as source_extract_router
 
 app = FastAPI(
     title="AI-Assisted Mini Lead Management System",
@@ -13,6 +14,7 @@ app = FastAPI(
 
 app.include_router(leads_router)
 app.include_router(dedup_router)
+app.include_router(source_extract_router)
 app.include_router(dashboard_router)
 
 

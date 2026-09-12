@@ -243,6 +243,51 @@ Example response payload:
 ]
 ```
 
+## AI-Assisted Source Extraction Workflow
+
+The source extraction endpoint (`POST /leads/source-extract`) extracts structured acquisition channels and context details from raw, unstructured lead notes text.
+
+### Why Structured LLM Extraction Layer
+
+Unstructured lead notes are too inconsistent for brittle keyword or regex matching, while unconstrained LLM calls risk malformed JSON and hallucinated categories. To solve this, the service combines **LiteLLM**, **Instructor**, and **Pydantic** into a structured, provider-agnostic extraction layer. LiteLLM provides seamless model interchangeability across providers (OpenAI, Anthropic, Gemini, or local models), Instructor guarantees schema enforcement during execution, and Pydantic restricts the output strictly to the seven allowed channel categories with concise source evidence.
+
+### Configuration and Bringing Your Own API Key
+
+The extraction service reads its provider and authentication details from environment variables (`.env`):
+
+```bash
+# Model identifier (supports any LiteLLM format, e.g. gpt-4o-mini, claude-3-5-sonnet, gemini/gemini-1.5-flash)
+LLM_MODEL=gpt-4o-mini
+
+# API key for the chosen provider
+LLM_API_KEY=your_api_key_here
+
+# Optional: custom base URL for local LLMs or proxy endpoints
+# LLM_API_BASE=http://localhost:11434
+```
+
+Users can bring their own API key for OpenAI (`OPENAI_API_KEY`), Anthropic (`ANTHROPIC_API_KEY`), or Google Gemini (`GEMINI_API_KEY`), or pass `LLM_API_KEY`.
+
+### Example Request and Response
+
+**Request:**
+```http
+POST /leads/source-extract
+Content-Type: application/json
+
+{
+  "text": "Met him at the SFF booth, scanned our QR code"
+}
+```
+
+**Response:**
+```json
+{
+  "channel": "Event",
+  "detail": "Singapore FinTech Festival 2026 - Booth QR Code"
+}
+```
+
 ## Project Organization
 
 ```

@@ -5,6 +5,7 @@ Note: Update if database columns in models.py change.
 """
 
 from datetime import datetime
+from enum import Enum
 from typing import Dict, Optional
 from pydantic import BaseModel, ConfigDict
 
@@ -63,3 +64,23 @@ class DashboardResponse(BaseModel):
     total_leads: int
     by_status: Dict[str, int]
     by_source_channel: Dict[str, int]
+
+
+class SourceChannel(str, Enum):
+    WEBSITE = "Website"
+    EVENT = "Event"
+    LINKEDIN = "LinkedIn"
+    ORGANIC_SEARCH = "Organic Search"
+    REFERRAL = "Referral"
+    MANUAL_SALES = "Manual/Sales"
+    OTHER = "Other"
+
+
+class SourceExtraction(BaseModel):
+    channel: SourceChannel
+    detail: str
+
+
+class SourceExtractRequest(BaseModel):
+    text: str
+
