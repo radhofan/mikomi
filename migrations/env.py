@@ -1,13 +1,13 @@
 import os
 from logging.config import fileConfig
+from pathlib import Path
 
 from alembic import context
 from dotenv import load_dotenv
+from pgserver.postgres_server import get_server
 from sqlalchemy import engine_from_config, pool
 
 from ai_assisted_mini_lead_management_system.db.models import Base
-
-from pathlib import Path
 
 load_dotenv()
 
@@ -17,10 +17,17 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 proj_root = Path(__file__).resolve().parents[1]
-resolved_db_url = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg2://postgres:postgres@localhost:5432/leads",
-)
+
+env_url = os.getenv("DATABASE_URL")
+if env_url and not env_url.startswith("postgresql+psycopg2://postgres:postgres@localhost:5432"):
+    resolved_db_url = env_url
+else:
+    srv = get_server(proj_root / "pgdata")
+    res = srv.psql("SELECT 1 FROM pg_database WHERE datname = 'leads';")
+    if "1" not in res:
+        srv.psql("CREATE DATABASE leads;")
+    resolved_db_url = srv.get_uri("leads")
+
 config.set_main_option("sqlalchemy.url", resolved_db_url)
 
 target_metadata = Base.metadata
@@ -48,11 +55,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            render_as_batch=True,
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()

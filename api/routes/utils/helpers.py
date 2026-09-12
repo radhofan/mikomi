@@ -2,6 +2,7 @@ from datetime import datetime
 import re
 from typing import Optional
 
+import pandas as pd
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Query, Session
 
@@ -130,3 +131,26 @@ def process_single_ingest(submission: LeadIngestRequest, db: Session) -> IngestR
         action="created",
         lead=LeadResponse.model_validate(new_lead),
     )
+
+
+def load_lead_dataframe(db: Session) -> pd.DataFrame:
+    """
+    Helper function to load leads from PostgreSQL into a DataFrame for record linkage.
+    """
+    leads = db.query(Lead).all()
+    if not leads:
+        return pd.DataFrame()
+
+    records = [
+        {
+            "record_id": lead.record_id,
+            "full_name": lead.full_name or "",
+            "company_name": lead.company_name or "",
+            "email": lead.email or "",
+            "phone_digits_str": str(lead.phone_digits) if lead.phone_digits else "",
+            "email_domain": lead.email.split("@")[-1] if lead.email and "@" in lead.email else "",
+        }
+        for lead in leads
+    ]
+    return pd.DataFrame(records)
+

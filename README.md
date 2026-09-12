@@ -190,6 +190,59 @@ The data preparation follows a reproducible workflow executed in `notebooks/1.0-
 - **Temporal Bounds:** Confirmed all creation dates sit within expected range (September 2025 to June 2026) with 0 future-dated records.
 - **Notes Lengths:** Inspected character lengths across the free-text `notes` field (mean ~74 chars, min 33, max 160) ensuring all records contain parseable source context.
 
+## Dedup Workflow
+
+The deduplication endpoint (`POST /leads/dedupe-candidates`) implements Fellegi-Sunter probabilistic record linkage using Splink 4 with an in-memory DuckDB backend. It identifies duplicate or near-duplicate leads across PostgreSQL records without running expensive brute-force pairwise comparisons.
+
+### Step 1: Candidate Blocking
+
+At ~2,000 records, unconstrained pairwise comparisons require $(N \times (N-1)) / 2 \approx 2.1 \text{ million}$ evaluations, making full-table fuzzy matching or LLM comparisons intractable. The endpoint constrains candidate pair generation using two blocking rules: `phone_digits_str` (grouping leads that share normalized phone digits) and `email_domain` (grouping leads that share corporate email domains). Only candidate pairs satisfying at least one of these blocking rules advance to probabilistic scoring.
+
+### Step 2: Probabilistic Comparisons and Parameter Training
+
+Candidate pairs are evaluated across four feature comparisons: exact match on normalized phone digits, Levenshtein distance on full name (threshold of 2), Jaro-Winkler string similarity on company name (threshold of 0.88), and Levenshtein distance on email address (threshold of 3).
+
+Model parameters are estimated directly from data without requiring manual labels. Unlinked agreement rates (u-probabilities) are estimated via random pair sampling across 10,000 pairs to determine baseline chance agreement. Linked agreement rates (m-probabilities) are estimated using Expectation-Maximization (EM) on the phone blocking rule, learning how reliably true duplicate records agree across attributes.
+
+### Step 3: Graph Clustering and Candidate Grouping
+
+Rather than surfacing fragmented pairwise links (left and right comparisons), the model applies Splink 4 connected components graph clustering (`linker.clustering.cluster_pairwise_predictions_at_threshold`) at the specified match probability `threshold` (default 0.50). This groups all directly and transitively linked records into unified entity clusters. The endpoint filters out singletons (unique leads with no duplicates) and returns duplicate candidate clusters containing two or more records, ranked by confidence and cluster size up to the requested `limit` (default 100).
+
+Example response payload:
+
+```json
+[
+  {
+    "cluster_id": 100234955,
+    "lead_count": 3,
+    "confidence": 0.939,
+    "leads": [
+      {
+        "record_id": 100234955,
+        "full_name": "Ji-woo Yoon",
+        "company_name": "Foster Studio",
+        "email": "ji-wooy@foster.biz",
+        "phone_digits": "34696235827"
+      },
+      {
+        "record_id": 100234956,
+        "full_name": "J. Yoon",
+        "company_name": "Foster Trading",
+        "email": "j.yoon@foster.biz",
+        "phone_digits": "34696235827"
+      },
+      {
+        "record_id": 100234957,
+        "full_name": "J. Yoon",
+        "company_name": "Foster Partners",
+        "email": "ji-woo.yoon@foster.biz",
+        "phone_digits": "34696235827"
+      }
+    ]
+  }
+]
+```
+
 ## Project Organization
 
 ```
@@ -243,9 +296,32 @@ The data preparation follows a reproducible workflow executed in `notebooks/1.0-
 
 ## Setup and How to run
 
-### 1. Local Setup
+Create and activate virtual environment:
 
-### 2. Docker Setup (recommended)
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Initialize PostgreSQL database and apply migrations:
+
+```bash
+python ai_assisted_mini_lead_management_system/db/regenerate.py
+```
+
+Start the FastAPI backend server:
+
+```bash
+uvicorn api.main:app --reload
+```
+
+> Note: DB starts automatically. PostgreSQL runs as an embedded instance managed by `pgserver` in the local `pgdata/` directory, and DuckDB for splink dedup runs in-process inside the application.
 
 ## Endpoints
 

@@ -4,39 +4,38 @@ from pathlib import Path
 import alembic.command
 import alembic.config
 from dotenv import load_dotenv
+from pgserver.postgres_server import get_server
 from sqlalchemy import create_engine, text
 
 PROJ_ROOT = Path(__file__).resolve().parents[2]
 
 
-def regenerate_database() -> None:
+def get_db_url() -> str:
     load_dotenv(PROJ_ROOT / ".env")
+    env_url = os.getenv("DATABASE_URL")
+    if env_url and not env_url.startswith("postgresql+psycopg2://postgres:postgres@localhost:5432"):
+        return env_url
 
-    db_url = os.getenv("DATABASE_URL", "postgresql+psycopg2://postgres:postgres@localhost:5432/leads")
+    pgdata = PROJ_ROOT / "pgdata"
+    srv = get_server(pgdata)
+    res = srv.psql("SELECT 1 FROM pg_database WHERE datname = 'leads';")
+    if "1" not in res:
+        srv.psql("CREATE DATABASE leads;")
+    return srv.get_uri("leads")
 
-    if db_url.startswith("sqlite:///") and not db_url.startswith("sqlite:////"):
-        rel_path = db_url.replace("sqlite:///", "")
-        resolved_db_url = f"sqlite:///{(PROJ_ROOT / rel_path).resolve()}"
-    else:
-        resolved_db_url = db_url
+
+def regenerate_database() -> None:
+    resolved_db_url = get_db_url()
 
     print(f"[INFO] Connecting to target database: {resolved_db_url}")
     engine = create_engine(resolved_db_url, isolation_level="AUTOCOMMIT")
 
     with engine.connect() as connection:
-        if "postgresql" in resolved_db_url:
-            print("[INFO] Dropping and recreating PostgreSQL public schema...")
-            connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE;"))
-            connection.execute(text("CREATE SCHEMA public;"))
-            connection.execute(text("GRANT ALL ON SCHEMA public TO postgres;"))
-            connection.execute(text("GRANT ALL ON SCHEMA public TO public;"))
-        elif "sqlite" in resolved_db_url:
-            print("[INFO] Dropping existing SQLite tables...")
-            connection.execute(text("PRAGMA foreign_keys = OFF;"))
-            result = connection.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';"))
-            for (table_name,) in result.fetchall():
-                connection.execute(text(f'DROP TABLE IF EXISTS "{table_name}";'))
-            connection.execute(text("PRAGMA foreign_keys = ON;"))
+        print("[INFO] Dropping and recreating PostgreSQL public schema...")
+        connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE;"))
+        connection.execute(text("CREATE SCHEMA public;"))
+        connection.execute(text("GRANT ALL ON SCHEMA public TO postgres;"))
+        connection.execute(text("GRANT ALL ON SCHEMA public TO public;"))
 
     engine.dispose()
 
