@@ -192,3 +192,7 @@ cython_debug/
 
 # pgserver database directory
 pgdata/
+
+# Node.js
+node_modules/
+frontend/dist/

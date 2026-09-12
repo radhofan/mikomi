@@ -366,6 +366,12 @@ Start the FastAPI backend server:
 uvicorn api.main:app --reload
 ```
 
+Start the React frontend:
+
+```bash
+npm run dev
+```
+
 > Note: DB starts automatically. PostgreSQL runs as an embedded instance managed by `pgserver` in the local `pgdata/` directory, and DuckDB for splink dedup runs in-process inside the application.
 
 ## Endpoints
