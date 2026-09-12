@@ -17,13 +17,10 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 proj_root = Path(__file__).resolve().parents[1]
-raw_db_url = os.getenv("DATABASE_URL", "sqlite:///leads.db")
-if raw_db_url.startswith("sqlite:///") and not raw_db_url.startswith("sqlite:////"):
-    rel_path = raw_db_url.replace("sqlite:///", "")
-    resolved_db_url = f"sqlite:///{(proj_root / rel_path).resolve()}"
-else:
-    resolved_db_url = raw_db_url
-
+resolved_db_url = os.getenv(
+    "DATABASE_URL",
+    "postgresql+psycopg2://postgres:postgres@localhost:5432/leads",
+)
 config.set_main_option("sqlalchemy.url", resolved_db_url)
 
 target_metadata = Base.metadata

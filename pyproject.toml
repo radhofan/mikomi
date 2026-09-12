@@ -20,8 +20,8 @@ requires-python = "~=3.10.0"
 
 [tool.ruff]
 line-length = 99
-src = ["ai_assisted_mini_lead_management_system"]
-include = ["pyproject.toml", "ai_assisted_mini_lead_management_system/**/*.py"]
+src = ["ai_assisted_mini_lead_management_system", "api"]
+include = ["pyproject.toml", "ai_assisted_mini_lead_management_system/**/*.py", "api/**/*.py"]
 
 [tool.ruff.lint]
 extend-select = ["I"]  # Add import sorting
