@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from splink import DuckDBAPI, Linker, SettingsCreator, block_on
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/leads", tags=["deduplication"])
 @router.post("/dedupe-candidates")
 def get_dedupe_candidates(
     threshold: float = Query(0.5, ge=0.0, le=1.0, description="Minimum match probability threshold"),
-    limit: int = Query(100, ge=1, le=1000, description="Maximum candidate pairs to return"),
+    limit: Optional[int] = Query(None, description="Maximum candidate pairs to return (returns all if omitted)"),
     db: Session = Depends(get_db),
 ) -> List[Dict[str, Any]]:
     """
@@ -100,10 +100,11 @@ def get_dedupe_candidates(
             {
                 "cluster_id": int(cid),
                 "lead_count": len(leads_list),
-                "confidence": round(avg_conf, 4),
+                "confidence": round(avg_conf, 6),
                 "leads": leads_list,
             }
         )
 
-    results.sort(key=lambda x: (x["confidence"], x["lead_count"]), reverse=True)
-    return results[:limit]
+    if limit is not None:
+        return results[:limit]
+    return results

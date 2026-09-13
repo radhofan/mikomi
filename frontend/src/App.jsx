@@ -2,6 +2,29 @@ import React, { useState, useEffect, useCallback } from "react"
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000"
 
+const EXAMPLE_BATCH_JSON = JSON.stringify(
+  [
+    {
+      name: "Alex Mercer",
+      email: "alex.mercer@apex.io",
+      phone: "+14155552671",
+      company: "Apex Corp",
+      country: "United States",
+      message: "Interested in enterprise pricing"
+    },
+    {
+      name: "Sarah Connor",
+      email: "sarah.c@cyberdyne.com",
+      phone: "+14155559812",
+      company: "Cyberdyne Systems",
+      country: "United States",
+      message: "Requesting a demo"
+    }
+  ],
+  null,
+  2
+)
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("leads")
 
@@ -29,8 +52,10 @@ export default function App() {
 
   // Deduplication
   const [dedupThreshold, setDedupThreshold] = useState(0.5)
-  const [dedupLimit, setDedupLimit] = useState(50)
+  const [dedupLimit, setDedupLimit] = useState("")
   const [dedupClusters, setDedupClusters] = useState([])
+  const [dedupPage, setDedupPage] = useState(1)
+  const dedupPageSize = 3
   const [loadingDedup, setLoadingDedup] = useState(false)
   const [dedupError, setDedupError] = useState("")
 
@@ -50,6 +75,12 @@ export default function App() {
   const [ingestResult, setIngestResult] = useState(null)
   const [loadingIngest, setLoadingIngest] = useState(false)
   const [ingestError, setIngestError] = useState("")
+
+  // Batch Ingest
+  const [batchJson, setBatchJson] = useState("")
+  const [loadingBatch, setLoadingBatch] = useState(false)
+  const [batchError, setBatchError] = useState("")
+  const [batchResult, setBatchResult] = useState(null)
 
   // Fetch Dashboard
   const fetchDashboard = useCallback(async () => {
@@ -143,15 +174,18 @@ export default function App() {
     setDedupError("")
     try {
       const params = new URLSearchParams({
-        threshold: String(dedupThreshold),
-        limit: String(dedupLimit)
+        threshold: String(dedupThreshold)
       })
+      if (dedupLimit) {
+        params.append("limit", String(dedupLimit))
+      }
       const res = await fetch(`${API_BASE}/leads/dedupe-candidates?${params.toString()}`, {
         method: "POST"
       })
       if (res.ok) {
         const data = await res.json()
         setDedupClusters(data)
+        setDedupPage(1)
       } else {
         setDedupError(`Server responded with ${res.status}`)
       }
@@ -218,6 +252,46 @@ export default function App() {
       setIngestError(err.message || "Failed to ingest lead")
     } finally {
       setLoadingIngest(false)
+    }
+  }
+
+  // Handle Batch Ingest
+  const handleBatchIngest = async (e) => {
+    e.preventDefault()
+    setLoadingBatch(true)
+    setBatchError("")
+    setBatchResult(null)
+    try {
+      let parsed
+      try {
+        parsed = JSON.parse(batchJson)
+      } catch {
+        setBatchError("Invalid JSON syntax. Please verify the JSON format.")
+        setLoadingBatch(false)
+        return
+      }
+      if (!Array.isArray(parsed)) {
+        setBatchError("JSON payload must be an array of lead objects.")
+        setLoadingBatch(false)
+        return
+      }
+      const res = await fetch(`${API_BASE}/leads/ingest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed)
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setBatchResult(data)
+        fetchDashboard()
+      } else {
+        const errJson = await res.json().catch(() => ({}))
+        setBatchError(errJson.detail ? JSON.stringify(errJson.detail) : `Batch ingest failed with status ${res.status}`)
+      }
+    } catch (err) {
+      setBatchError(err.message || "Failed to submit batch ingest")
+    } finally {
+      setLoadingBatch(false)
     }
   }
 
@@ -453,10 +527,10 @@ export default function App() {
               Limit:
               <input
                 type="number"
-                min="10"
-                max="200"
+                min="1"
+                placeholder="All"
                 value={dedupLimit}
-                onChange={(e) => setDedupLimit(parseInt(e.target.value) || 50)}
+                onChange={(e) => setDedupLimit(e.target.value ? parseInt(e.target.value, 10) : "")}
                 className="input"
                 style={{ width: "80px", marginLeft: "8px" }}
               />
@@ -478,45 +552,73 @@ export default function App() {
                 Click "Run Deduplication" to inspect duplicate entity clusters.
               </p>
             ) : (
-              dedupClusters.map((cluster) => (
-                <div key={cluster.cluster_id} className="cluster-card">
-                  <div className="cluster-header">
-                    <div>
-                      <strong>Cluster #{cluster.cluster_id}</strong>
-                      <span style={{ marginLeft: "12px", fontSize: "13px", color: "var(--text-secondary)" }}>
-                        {cluster.lead_count} duplicate records
-                      </span>
+              <>
+                {dedupClusters
+                  .slice((dedupPage - 1) * dedupPageSize, dedupPage * dedupPageSize)
+                  .map((cluster) => (
+                    <div key={cluster.cluster_id} className="cluster-card">
+                      <div className="cluster-header">
+                        <div>
+                          <strong>Cluster #{cluster.cluster_id}</strong>
+                          <span style={{ marginLeft: "12px", fontSize: "13px", color: "var(--text-secondary)" }}>
+                            {cluster.lead_count} duplicate records
+                          </span>
+                        </div>
+                        <span className="badge badge-qualified">
+                          Confidence: {(cluster.confidence * 100).toFixed(4)}%
+                        </span>
+                      </div>
+                      <div className="table-wrapper">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Record ID</th>
+                              <th>Full Name</th>
+                              <th>Company</th>
+                              <th>Email</th>
+                              <th>Phone Digits</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cluster.leads.map((l) => (
+                              <tr key={l.record_id}>
+                                <td>{l.record_id}</td>
+                                <td>{l.full_name}</td>
+                                <td>{l.company_name}</td>
+                                <td>{l.email}</td>
+                                <td>{l.phone_digits}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                    <span className="badge badge-qualified">
-                      Confidence: {Math.round(cluster.confidence * 100)}%
+                  ))}
+
+                {dedupClusters.length > 0 && (
+                  <div className="pagination" style={{ marginTop: "16px" }}>
+                    <span>
+                      Page {dedupPage} of {Math.max(1, Math.ceil(dedupClusters.length / dedupPageSize))} ({dedupClusters.length} clusters)
                     </span>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button
+                        className="btn btn-secondary"
+                        disabled={dedupPage <= 1}
+                        onClick={() => setDedupPage((prev) => Math.max(1, prev - 1))}
+                      >
+                        Previous
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        disabled={dedupPage >= Math.ceil(dedupClusters.length / dedupPageSize)}
+                        onClick={() => setDedupPage((prev) => Math.min(Math.ceil(dedupClusters.length / dedupPageSize), prev + 1))}
+                      >
+                        Next
+                      </button>
+                    </div>
                   </div>
-                  <div className="table-wrapper">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Record ID</th>
-                          <th>Full Name</th>
-                          <th>Company</th>
-                          <th>Email</th>
-                          <th>Phone Digits</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {cluster.leads.map((l) => (
-                          <tr key={l.record_id}>
-                            <td>{l.record_id}</td>
-                            <td>{l.full_name}</td>
-                            <td>{l.company_name}</td>
-                            <td>{l.email}</td>
-                            <td>{l.phone_digits}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ))
+                )}
+              </>
             )}
           </div>
         </div>
@@ -600,97 +702,165 @@ export default function App() {
 
       {/* Tab 4: Ingest Form */}
       {activeTab === "ingest" && (
-        <div className="panel" style={{ maxWidth: "600px" }}>
-          <h2 style={{ fontSize: "18px", marginBottom: "8px" }}>Website Form Ingest</h2>
-          <p style={{ color: "var(--text-secondary)", fontSize: "14px", marginBottom: "16px" }}>
-            Submits a new website lead. Automatically deduplicates on email or phone and updates existing leads.
-          </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: "20px", alignItems: "start" }}>
+          {/* Left Column: Single Form Ingest */}
+          <div className="panel">
+            <h2 style={{ fontSize: "18px", marginBottom: "8px" }}>Website Form Ingest</h2>
+            <p style={{ color: "var(--text-secondary)", fontSize: "14px", marginBottom: "16px" }}>
+              Submits a new website lead. Automatically deduplicates on email or phone and updates existing leads.
+            </p>
 
-          <form onSubmit={handleIngest} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <div>
-              <label style={{ display: "block", fontSize: "13px", marginBottom: "4px" }}>Full Name *</label>
-              <input
-                type="text"
-                required
-                className="input"
-                style={{ width: "100%" }}
-                value={ingestName}
-                onChange={(e) => setIngestName(e.target.value)}
-              />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: "13px", marginBottom: "4px" }}>Email *</label>
-              <input
-                type="email"
-                required
-                className="input"
-                style={{ width: "100%" }}
-                value={ingestEmail}
-                onChange={(e) => setIngestEmail(e.target.value)}
-              />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: "13px", marginBottom: "4px" }}>Phone</label>
-              <input
-                type="text"
-                className="input"
-                style={{ width: "100%" }}
-                value={ingestPhone}
-                onChange={(e) => setIngestPhone(e.target.value)}
-              />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: "13px", marginBottom: "4px" }}>Company</label>
-              <input
-                type="text"
-                className="input"
-                style={{ width: "100%" }}
-                value={ingestCompany}
-                onChange={(e) => setIngestCompany(e.target.value)}
-              />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: "13px", marginBottom: "4px" }}>Country</label>
-              <input
-                type="text"
-                className="input"
-                style={{ width: "100%" }}
-                value={ingestCountry}
-                onChange={(e) => setIngestCountry(e.target.value)}
-              />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: "13px", marginBottom: "4px" }}>Message / Notes</label>
-              <textarea
-                className="textarea"
-                rows="2"
-                style={{ width: "100%" }}
-                value={ingestMessage}
-                onChange={(e) => setIngestMessage(e.target.value)}
-              />
-            </div>
-
-            <button type="submit" className="btn btn-primary" disabled={loadingIngest} style={{ marginTop: "8px" }}>
-              {loadingIngest ? "Submitting..." : "Submit Ingest"}
-            </button>
-          </form>
-
-          {ingestError && (
-            <div style={{ color: "var(--danger)", padding: "12px", background: "#fef2f2", borderRadius: "8px", marginTop: "16px" }}>
-              {ingestError}
-            </div>
-          )}
-
-          {ingestResult && (
-            <div style={{ marginTop: "20px" }}>
-              <div style={{ padding: "12px", background: "#f0fdf4", color: "#166534", borderRadius: "8px", marginBottom: "8px" }}>
-                Result Action: <strong>{ingestResult.action.toUpperCase()}</strong>
+            <form onSubmit={handleIngest} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "13px", marginBottom: "4px" }}>Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  className="input"
+                  style={{ width: "100%" }}
+                  value={ingestName}
+                  onChange={(e) => setIngestName(e.target.value)}
+                />
               </div>
-              <div className="code-box">
-                {JSON.stringify(ingestResult.lead, null, 2)}
+              <div>
+                <label style={{ display: "block", fontSize: "13px", marginBottom: "4px" }}>Email *</label>
+                <input
+                  type="email"
+                  required
+                  className="input"
+                  style={{ width: "100%" }}
+                  value={ingestEmail}
+                  onChange={(e) => setIngestEmail(e.target.value)}
+                />
               </div>
+              <div>
+                <label style={{ display: "block", fontSize: "13px", marginBottom: "4px" }}>Phone</label>
+                <input
+                  type="text"
+                  className="input"
+                  style={{ width: "100%" }}
+                  value={ingestPhone}
+                  onChange={(e) => setIngestPhone(e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "13px", marginBottom: "4px" }}>Company</label>
+                <input
+                  type="text"
+                  className="input"
+                  style={{ width: "100%" }}
+                  value={ingestCompany}
+                  onChange={(e) => setIngestCompany(e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "13px", marginBottom: "4px" }}>Country</label>
+                <input
+                  type="text"
+                  className="input"
+                  style={{ width: "100%" }}
+                  value={ingestCountry}
+                  onChange={(e) => setIngestCountry(e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", fontSize: "13px", marginBottom: "4px" }}>Message / Notes</label>
+                <textarea
+                  className="textarea"
+                  rows="2"
+                  style={{ width: "100%" }}
+                  value={ingestMessage}
+                  onChange={(e) => setIngestMessage(e.target.value)}
+                />
+              </div>
+
+              <button type="submit" className="btn btn-primary" disabled={loadingIngest} style={{ marginTop: "8px" }}>
+                {loadingIngest ? "Submitting..." : "Submit Ingest"}
+              </button>
+            </form>
+
+            {ingestError && (
+              <div style={{ color: "var(--danger)", padding: "12px", background: "#fef2f2", borderRadius: "8px", marginTop: "16px" }}>
+                {ingestError}
+              </div>
+            )}
+
+            {ingestResult && (
+              <div style={{ marginTop: "20px" }}>
+                <div style={{ padding: "12px", background: "#f0fdf4", color: "#166534", borderRadius: "8px", marginBottom: "8px" }}>
+                  Result Action: <strong>{ingestResult.action.toUpperCase()}</strong>
+                </div>
+                <div className="code-box">
+                  {JSON.stringify(ingestResult.lead, null, 2)}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right Column: Batch JSON Ingest */}
+          <div className="panel">
+            <h2 style={{ fontSize: "18px", marginBottom: "8px" }}>Batch JSON Ingest</h2>
+            <p style={{ color: "var(--text-secondary)", fontSize: "14px", marginBottom: "16px" }}>
+              Submit multiple leads in a JSON array. Each lead is deduplicated and either created or updated.
+            </p>
+
+            <form onSubmit={handleBatchIngest} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "13px", marginBottom: "4px" }}>JSON Payload *</label>
+                <textarea
+                  className="textarea"
+                  rows="10"
+                  style={{ width: "100%", fontFamily: "monospace", fontSize: "13px" }}
+                  placeholder="Paste JSON array of lead objects..."
+                  value={batchJson}
+                  onChange={(e) => setBatchJson(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button type="submit" className="btn btn-primary" disabled={loadingBatch || !batchJson.trim()}>
+                  {loadingBatch ? "Processing Batch..." : "Submit Batch Ingest"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setBatchJson(EXAMPLE_BATCH_JSON)}
+                >
+                  Fill Example
+                </button>
+              </div>
+            </form>
+
+            {batchError && (
+              <div style={{ color: "var(--danger)", padding: "12px", background: "#fef2f2", borderRadius: "8px", marginTop: "16px" }}>
+                {batchError}
+              </div>
+            )}
+
+            {batchResult && (
+              <div style={{ marginTop: "20px" }}>
+                <div style={{ padding: "10px 14px", background: "#f0fdf4", color: "#166534", borderRadius: "8px", marginBottom: "8px", fontSize: "14px", fontWeight: "600" }}>
+                  Processed {batchResult.length} leads ({batchResult.filter((r) => r.action === "created").length} created, {batchResult.filter((r) => r.action === "updated").length} updated)
+                </div>
+                <div className="code-box" style={{ maxHeight: "250px", overflowY: "auto" }}>
+                  {JSON.stringify(batchResult, null, 2)}
+                </div>
+              </div>
+            )}
+
+            {/* Example Format Below It */}
+            <div style={{ marginTop: "20px", borderTop: "1px solid var(--border-color)", paddingTop: "14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                <label style={{ fontSize: "13px", fontWeight: "600" }}>
+                  Example Format:
+                </label>
+              </div>
+              <pre className="code-box" style={{ fontSize: "12px", maxHeight: "190px", overflowY: "auto" }}>
+                {EXAMPLE_BATCH_JSON}
+              </pre>
             </div>
-          )}
+          </div>
         </div>
       )}
 

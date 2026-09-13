@@ -209,7 +209,7 @@ We also want to check for extreme or broken data just to be safe.
 
 ## Dedup Workflow
 
-The deduplication endpoint (`POST /leads/dedupe-candidates`) implements **Fellegi-Sunter probabilistic record linkage using Splink 4**, a state of the art record linkage solution and adopted industry-wide. It identifies duplicate or near-duplicate leads across PostgreSQL records without running expensive brute-force pairwise comparisons. We use this method because:
+The deduplication endpoint (`POST /leads/dedupe-candidates`) implements **Fellegi-Sunter probabilistic record linkage using [Splink 4](https://moj-analytical-services.github.io/splink/index.html)**, a state of the art record linkage solution and adopted industry-wide. It identifies duplicate or near-duplicate leads across PostgreSQL records without running expensive brute-force pairwise comparisons. We use this method because:
 
 1. **Proven Better than fuzzy/exact matching:** Exact matching can miss duplicates when records contain typos, formatting differences, or missing values. Probabilistic linkage is designed to handle these imperfect identifiers.
 
@@ -276,7 +276,7 @@ The source extraction endpoint (`POST /leads/source-extract`) extracts structure
 
 Unstructured lead notes are too inconsistent for brittle keyword or regex matching, while unconstrained LLM calls risk malformed JSON and hallucinated categories. Static matching also cannot capture context.
 
-To solve this, we combine **LiteLLM**, **Instructor**, and **Pydantic** into a structured, provider-agnostic extraction layer. LiteLLM provides seamless model interchangeability across providers (OpenAI, Anthropic, Gemini, or local models), Instructor guarantees schema enforcement during execution, and Pydantic restricts the output strictly to the seven allowed channel categories with concise source evidence.
+To solve this, we combine some powerful libraries such as **LiteLLM**, **Instructor**, and **Pydantic** into a structured, provider-agnostic extraction layer. LiteLLM provides seamless model interchangeability across providers (OpenAI, Anthropic, Gemini, or local models), Instructor guarantees schema enforcement during execution, and Pydantic restricts the output strictly to the seven allowed channel categories with concise source evidence.
 
 ### Configuration and Bringing Your Own API Key
 
@@ -316,6 +316,8 @@ Content-Type: application/json
 ```
 
 ## Setup and How to run
+
+Python and Node is required globally on your machine to run this project.
 
 Create and activate virtual environment:
 
@@ -366,3 +368,8 @@ npm run dev
 ## Test Suites
 
 ## Future works
+
+1. **Lead Merge Workflow:** Implement a `POST /leads/merge` endpoint with field survivorship rules (primary record selection, notes concatenation, contact owner assignment), soft-deletes, and an audit trail to consolidate duplicate clusters into canonical records.
+2. **Async Workers for Dedup & Extraction:** Offload potential heavy Splink clustering jobs and LLM extraction calls to asynchronous background workers (such as Celery or Redis Queue) with task polling and caching to avoid HTTP request timeouts during bulk operations.
+3. **Dockerization:** Split the architecture into separate production-ready containers via Docker Compose.
+4. **LLM Guardrails & Rate Limiting:** Add token rate limiting, cost quotas, prompt injection defenses, and automatic fallback models to prevent API abuse and cost overruns.
