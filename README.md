@@ -167,6 +167,8 @@ flowchart LR
 
 ## Data pipeline Workflow
 
+> **Note on Reproduction:** I kept `data/` folder committed in the repository strictly for reproduction purposes. Keeping the raw seeds (`data/raw/`) and cleaned outputs (`data/interim/`) versioned allows reviewers to immediately run the notebooks, verify the data pipeline, and initialize the database without any extra setup or external data fetching, do not do this in prod.
+
 This data marks the raw data exploration using jupyter notebooks so we have a picture on how to handle the data in the later stages.
 
 The data preparation uses the notebook `notebooks/1.0-data-cleaning.ipynb`. The original file (`data/raw/leads_seed.csv`) remains strictly immutable, generating a standardized dataset at `data/interim/leads_cleaned.csv`. Here are the summaries of the steps from the notebook.
