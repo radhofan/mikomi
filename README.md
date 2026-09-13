@@ -157,6 +157,14 @@ signal, not a negative one.
 
 An internal lead management platform for sales and marketing teams evaluating a lightweight, self-hosted alternative to HubSpot. It unifies inbound lead tracking while solving real-world CRM data quality issues: detecting duplicate contacts using scalable probabilistic record linkage and extracting structured acquisition channels from free-text notes.
 
+### Project Overview
+
+|              Leads Dashboard & Filters               |               AI Lead Deduplication                |
+| :--------------------------------------------------: | :------------------------------------------------: |
+|  ![Leads Dashboard](frontend/public/dashboard.png)   |   ![AI Deduplication](frontend/public/dedup.png)   |
+|               **AI Source Extraction**               |              **Website Form Ingest**               |
+| ![AI Source Extraction](frontend/public/extract.png) | ![Website Form Ingest](frontend/public/ingest.png) |
+
 ```mermaid
 flowchart LR
     Client["React Frontend (Vite)"] --> API["FastAPI Backend"]

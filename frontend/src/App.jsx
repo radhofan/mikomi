@@ -628,9 +628,17 @@ export default function App() {
       {activeTab === "extract" && (
         <div className="panel">
           <h2 style={{ fontSize: "18px", marginBottom: "8px" }}>AI Source Extraction (LiteLLM + Instructor)</h2>
-          <p style={{ color: "var(--text-secondary)", fontSize: "14px", marginBottom: "16px" }}>
-            Extracts structured acquisition channels and factual source evidence from raw notes.
-          </p>
+          <div style={{ background: "#f8fafc", border: "1px solid var(--border-color)", borderRadius: "8px", padding: "14px 16px", marginBottom: "18px" }}>
+            <h3 style={{ fontSize: "14px", fontWeight: "700", marginBottom: "6px", color: "var(--text-primary)" }}>
+              The Scenario: You Are a CRM Manager
+            </h3>
+            <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "8px", lineHeight: "1.5" }}>
+              In real sales teams, reps write messy free-text notes about where a lead came from instead of properly tagging the CRM dropdowns. You get notes like "Met him at the booth in SFF" or "He messaged me on LinkedIn asking for pricing".
+            </p>
+            <p style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: "1.5" }}>
+              As a CRM manager, you need clean attribution data for executive dashboards. This tool uses an LLM to read those messy notes and extract the exact acquisition channel (Event, LinkedIn, Website, Referral, Organic Search, Manual/Sales, or Other) plus the factual evidence into structured JSON.
+            </p>
+          </div>
 
           <div style={{ marginBottom: "12px" }}>
             <label style={{ display: "block", fontSize: "13px", fontWeight: "600", marginBottom: "6px" }}>
