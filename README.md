@@ -377,6 +377,22 @@ npm run dev
 
 ## Test Suites
 
+The automated test suite evaluates core business logic, deduplication clustering, and ambiguous real-world edge cases using `pytest` and FastAPI's `TestClient`.
+
+Run the test suite:
+
+```bash
+pytest -v
+```
+
+### Test Coverage Summary
+
+| Test Area | Test File | Scenarios Tested |
+| :--- | :--- | :--- |
+| **Ingestion & Auto-Deduplication** | `tests/test_ingest.py` | 1. New lead creation with defaults.<br>2. Case-insensitive email duplicate matching and notes append.<br>3. Normalized phone digits fallback matching on different email aliases.<br>4. Mixed batch submissions (new and duplicate leads in a single payload). |
+| **Probabilistic Deduplication** | `tests/test_dedup.py` | 1. Fellegi-Sunter candidate cluster schema verification.<br>2. Cluster limit parameter enforcement.<br>3. High-threshold filtering behavior (e.g. threshold >= 0.98).<br>4. Record isolation ensuring distinct identities within clusters. |
+| **AI Source Extraction** | `tests/test_source_extract.py` | 1. Event booth note classification (`Event`).<br>2. Empty and whitespace note fallback (`Other`, `Empty notes`).<br>3. Peer referral note classification (`Referral`).<br>4. Strict Pydantic enum validation across the seven allowed marketing channels. |
+
 ## Future works
 
 1. **Lead Merge Workflow:** Implement a `POST /leads/merge` endpoint with field survivorship rules (primary record selection, notes concatenation, contact owner assignment), soft-deletes, and an audit trail to consolidate duplicate clusters into canonical records.
