@@ -21,7 +21,7 @@ class Lead(Base):
     company_name: Mapped[str] = mapped_column(String(100), index=True, default="", nullable=False)
     email: Mapped[str] = mapped_column(String(100), index=True, default="", nullable=False)
     phone_number: Mapped[str] = mapped_column(String(100), default="", nullable=False)
-    phone_digits: Mapped[int] = mapped_column(Integer, index=True, nullable=False, default=0)
+    phone_digits: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False, default=0)
     country: Mapped[str] = mapped_column(String(100), index=True, default="Unknown", nullable=False)
     city: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     lead_status: Mapped[str] = mapped_column(String(100), index=True, default="New", nullable=False)

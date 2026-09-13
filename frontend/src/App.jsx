@@ -17,6 +17,7 @@ export default function App() {
   const [countryFilter, setCountryFilter] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [pageOffset, setPageOffset] = useState(0)
+  const [totalCount, setTotalCount] = useState(0)
   const pageLimit = 25
 
   // Edit lead modal
@@ -80,6 +81,12 @@ export default function App() {
 
       const res = await fetch(`${API_BASE}/leads?${params.toString()}`)
       if (res.ok) {
+        const totalHeader = res.headers.get("x-total-count") || res.headers.get("X-Total-Count")
+        if (totalHeader) {
+          setTotalCount(parseInt(totalHeader, 10))
+        } else if (dashboard?.total_leads) {
+          setTotalCount(dashboard.total_leads)
+        }
         const data = await res.json()
         setLeads(data)
       }
@@ -88,11 +95,17 @@ export default function App() {
     } finally {
       setLoadingLeads(false)
     }
-  }, [statusFilter, ownerFilter, countryFilter, searchQuery, pageOffset])
+  }, [statusFilter, ownerFilter, countryFilter, searchQuery, pageOffset, dashboard?.total_leads])
 
   useEffect(() => {
     fetchDashboard()
   }, [fetchDashboard])
+
+  useEffect(() => {
+    if (dashboard?.total_leads && totalCount === 0) {
+      setTotalCount(dashboard.total_leads)
+    }
+  }, [dashboard?.total_leads, totalCount])
 
   useEffect(() => {
     if (activeTab === "leads") {
@@ -215,6 +228,10 @@ export default function App() {
     q: searchQuery
   }).toString()}`
 
+  const currentPage = Math.floor(pageOffset / pageLimit) + 1
+  const effectiveTotal = totalCount || (leads.length ? pageOffset + leads.length : 0)
+  const totalPages = Math.max(1, Math.ceil(effectiveTotal / pageLimit))
+
   return (
     <div className="container">
       <header>
@@ -225,19 +242,27 @@ export default function App() {
       {/* Top Dashboard Metrics */}
       <div className="kpi-grid">
         <div className="kpi-card">
-          <div className="kpi-title">Total Leads</div>
-          <div className="kpi-value">{dashboard ? dashboard.total_leads : "—"}</div>
+          <div className="kpi-title">
+            Total Leads <span style={{ color: "var(--text-secondary)", fontSize: "11px", fontWeight: "normal", textTransform: "none", marginLeft: "6px" }}>[GET /dashboard]</span>
+          </div>
+          <div className="kpi-value">{dashboard ? dashboard.total_leads : "-"}</div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-title">Qualified Leads</div>
+          <div className="kpi-title">
+            Qualified Leads <span style={{ color: "var(--text-secondary)", fontSize: "11px", fontWeight: "normal", textTransform: "none", marginLeft: "6px" }}>[GET /dashboard]</span>
+          </div>
           <div className="kpi-value">{dashboard?.by_status?.Qualified || 0}</div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-title">Opportunity</div>
+          <div className="kpi-title">
+            Opportunity <span style={{ color: "var(--text-secondary)", fontSize: "11px", fontWeight: "normal", textTransform: "none", marginLeft: "6px" }}>[GET /dashboard]</span>
+          </div>
           <div className="kpi-value">{dashboard?.by_status?.Opportunity || 0}</div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-title">Closed Won</div>
+          <div className="kpi-title">
+            Closed Won <span style={{ color: "var(--text-secondary)", fontSize: "11px", fontWeight: "normal", textTransform: "none", marginLeft: "6px" }}>[GET /dashboard]</span>
+          </div>
           <div className="kpi-value">{dashboard?.by_status?.["Closed Won"] || 0}</div>
         </div>
       </div>
@@ -248,25 +273,25 @@ export default function App() {
           className={`tab-btn ${activeTab === "leads" ? "active" : ""}`}
           onClick={() => setActiveTab("leads")}
         >
-          Leads Directory
+          Leads Directory <span style={{ color: "#94a3b8", fontSize: "11px", fontWeight: "normal", marginLeft: "6px" }}>[GET /leads]</span>
         </button>
         <button
           className={`tab-btn ${activeTab === "dedup" ? "active" : ""}`}
           onClick={() => setActiveTab("dedup")}
         >
-          AI Deduplication
+          AI Deduplication <span style={{ color: "#94a3b8", fontSize: "11px", fontWeight: "normal", marginLeft: "6px" }}>[POST /leads/dedupe-candidates]</span>
         </button>
         <button
           className={`tab-btn ${activeTab === "extract" ? "active" : ""}`}
           onClick={() => setActiveTab("extract")}
         >
-          AI Source Extraction
+          AI Source Extraction <span style={{ color: "#94a3b8", fontSize: "11px", fontWeight: "normal", marginLeft: "6px" }}>[POST /leads/source-extract]</span>
         </button>
         <button
           className={`tab-btn ${activeTab === "ingest" ? "active" : ""}`}
           onClick={() => setActiveTab("ingest")}
         >
-          Website Ingest
+          Website Ingest <span style={{ color: "#94a3b8", fontSize: "11px", fontWeight: "normal", marginLeft: "6px" }}>[POST /leads/ingest]</span>
         </button>
       </div>
 
@@ -381,19 +406,19 @@ export default function App() {
 
           <div className="pagination">
             <span>
-              Showing {leads.length} records (offset {pageOffset})
+              Page {currentPage} of {totalPages} ({effectiveTotal.toLocaleString()} leads)
             </span>
             <div style={{ display: "flex", gap: "8px" }}>
               <button
                 className="btn btn-secondary"
-                disabled={pageOffset === 0}
+                disabled={currentPage <= 1 || pageOffset === 0}
                 onClick={() => setPageOffset((prev) => Math.max(0, prev - pageLimit))}
               >
                 Previous
               </button>
               <button
                 className="btn btn-secondary"
-                disabled={leads.length < pageLimit}
+                disabled={currentPage >= totalPages || leads.length < pageLimit}
                 onClick={() => setPageOffset((prev) => prev + pageLimit)}
               >
                 Next

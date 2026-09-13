@@ -145,37 +145,52 @@ tooling, and any production concerns (deployment, scaling, monitoring). If you h
 Questions welcome any time before you submit — email us. Asking a good scoping question is a positive
 signal, not a negative one.
 
+<br>
+
 # AI-Assisted Mini Lead Management System Project
 
 <a target="_blank" href="https://cookiecutter-data-science.drivendata.org/">
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
-A short description of the project.
+</br>
+
+An internal lead management platform for sales and marketing teams evaluating a lightweight, self-hosted alternative to HubSpot. It unifies inbound lead tracking while solving real-world CRM data quality issues: detecting duplicate contacts using scalable probabilistic record linkage and extracting structured acquisition channels from free-text notes.
+
+```mermaid
+flowchart LR
+    Client["React Frontend (Vite)"] --> API["FastAPI Backend"]
+    API --> DB[("PostgreSQL (pgserver)")]
+    API --> Dedup["Deduplication (Splink 4)"]
+    API --> LLM["Source Extraction (LiteLLM)"]
+```
 
 ## Data pipeline Workflow
 
-The data preparation follows a reproducible workflow executed in `notebooks/1.0-data-cleaning.ipynb`. The original file (`data/raw/leads_seed.csv`) remains strictly immutable, generating a standardized dataset at `data/interim/leads_cleaned.csv`.
+This data marks the raw data exploration using jupyter notebooks so we have a picture on how to handle the data in the later stages.
+
+The data preparation uses the notebook `notebooks/1.0-data-cleaning.ipynb`. The original file (`data/raw/leads_seed.csv`) remains strictly immutable, generating a standardized dataset at `data/interim/leads_cleaned.csv`. Here are the summaries of the steps from the notebook.
 
 ### Step 1: Structure Normalization
 
 - **Column Standardization:** Mapped HubSpot-style title headers into clean, lowercase `snake_case` identifiers (`record_id`, `first_name`, `last_name`, `full_name`, `email`, `phone_number`, `lead_status`, `notes`, etc.).
-- **Dead Column Pruning:** Identified and pruned unused HubSpot CRM export columns having >95% missing values (`City`, `Original Source Drill-Down 1`, `Annual Revenue`, `Marketing contact status`, `GDPR consent`, `Lead Score`).
+- **Dead Column Removal:** Identified and pruned unused HubSpot CRM export columns having >95% missing values (`City`, `Original Source Drill-Down 1`, `Annual Revenue`, `Marketing contact status`, `GDPR consent`, `Lead Score`).
 
 ### Step 2: Validity Checks
 
 - **Lead Status Normalization:** Cleaned whitespace and casing inconsistencies (`New`, `new`, `NEW`, `" New"`) into standardized title-case values (`New`, `Contacted`, `Connected`, `Qualified`, `Opportunity`, `Closed Won`, `Closed Lost`).
-- **Email Sanity:** Validated all 2,049 emails using regex format matching after lowercase conversion and whitespace trimming (100% valid format rate).
-- **Phone Digit Extraction:** Extracted normalized numerical sequences (`phone_digits`) for indexing and downstream candidate blocking.
-- **Temporal Ordering:** Parsed mixed date formats (`2026-06-02`, `6/4/2026`, `2026-05-20T00:00:00Z`) into UTC timestamps;
+- **Email Verification:** Validated all 2,049 emails using regex format matching after lowercase conversion and whitespace trimming (100% valid format rate).
+- **Phone Digit Normalization:** Extracted normalized numerical sequences (`phone_digits`) for indexing and downstream candidate blocking.
+- **Timestamp Normalization:** Parsed mixed date formats (`2026-06-02`, `6/4/2026`, `2026-05-20T00:00:00Z`) into UTC timestamps;
 
-### Step 3: Duplicate Screening & Candidate Blocking
+### Step 3: Duplicate Screening
+
+We do not drop anything here, we preserved all records for the AI deduplication scoring stage. We just want to explore the original data and see what we are dealing with using exact matching.
 
 - **Exact Duplicates & ID Collisions:** Verified 0 full-row exact duplicates and 0 duplicate `record_id` values.
 - **Near-Duplicate Surfacing:** Blocked on normalized phone digits and lowercased email addresses:
   - 58 email addresses appear more than once.
   - 232 phone digit fingerprints appear across multiple records with slight variations in name spelling or company legal suffix.
-- **Duplicate Handling:** We do not drop anything here, we preserved all records for the AI deduplication scoring stage.
 
 ### Step 4: Missing Data & Name Resolution
 
@@ -184,7 +199,9 @@ The data preparation follows a reproducible workflow executed in `notebooks/1.0-
   - If only `full_name` is present, parsed into `first_name` and `last_name`.
 - **Categorical Imputation:** Defaulted empty optional fields (`contact_owner` to `Unassigned`, `country` to `Unknown`, empty strings for optional text fields).
 
-### Step 5: Outliers and Anomalies
+### Step 5: Outliers and Anomalies Detection
+
+We also want to check for extreme or broken data just to be safe.
 
 - **Phone Digit Lengths:** Audited digit distributions (standard lengths 10 to 13 digits); verified 0 truncated phone strings (<7 digits).
 - **Temporal Bounds:** Confirmed all creation dates sit within expected range (September 2025 to June 2026) with 0 future-dated records.
@@ -192,7 +209,15 @@ The data preparation follows a reproducible workflow executed in `notebooks/1.0-
 
 ## Dedup Workflow
 
-The deduplication endpoint (`POST /leads/dedupe-candidates`) implements Fellegi-Sunter probabilistic record linkage using Splink 4 with an in-memory DuckDB backend. It identifies duplicate or near-duplicate leads across PostgreSQL records without running expensive brute-force pairwise comparisons.
+The deduplication endpoint (`POST /leads/dedupe-candidates`) implements **Fellegi-Sunter probabilistic record linkage using Splink 4**, a state of the art record linkage solution and adopted industry-wide. It identifies duplicate or near-duplicate leads across PostgreSQL records without running expensive brute-force pairwise comparisons. We use this method because:
+
+1. **Proven Better than fuzzy/exact matching:** Exact matching can miss duplicates when records contain typos, formatting differences, or missing values. Probabilistic linkage is designed to handle these imperfect identifiers.
+
+2. **Multiple and unique rules for each column:** Instead of treating every field agreement equally, Fellegi-Sunter combines agreement and disagreement evidence across multiple fields to determine whether two records are likely to represent the same entity.
+
+3. **Data-driven weights:** Fellegi-Sunter assigns weights based on how strongly each field agreement or disagreement distinguishes matches from non-matches, reducing the need for manually defining and tuning many matching rules.
+
+4. **No expensive process or LLM calls:** The matching process runs using the host hardware using deterministic string comparisons and probabilistic scoring, avoiding per-record LLM/API calls, external dependencies, and their associated latency and cost, performance depends on specs but it is not that resource expensive compared to the later one.
 
 ### Step 1: Candidate Blocking
 
@@ -249,7 +274,9 @@ The source extraction endpoint (`POST /leads/source-extract`) extracts structure
 
 ### Why Structured LLM Extraction Layer
 
-Unstructured lead notes are too inconsistent for brittle keyword or regex matching, while unconstrained LLM calls risk malformed JSON and hallucinated categories. To solve this, the service combines **LiteLLM**, **Instructor**, and **Pydantic** into a structured, provider-agnostic extraction layer. LiteLLM provides seamless model interchangeability across providers (OpenAI, Anthropic, Gemini, or local models), Instructor guarantees schema enforcement during execution, and Pydantic restricts the output strictly to the seven allowed channel categories with concise source evidence.
+Unstructured lead notes are too inconsistent for brittle keyword or regex matching, while unconstrained LLM calls risk malformed JSON and hallucinated categories. Static matching also cannot capture context.
+
+To solve this, we combine **LiteLLM**, **Instructor**, and **Pydantic** into a structured, provider-agnostic extraction layer. LiteLLM provides seamless model interchangeability across providers (OpenAI, Anthropic, Gemini, or local models), Instructor guarantees schema enforcement during execution, and Pydantic restricts the output strictly to the seven allowed channel categories with concise source evidence.
 
 ### Configuration and Bringing Your Own API Key
 
@@ -268,9 +295,10 @@ LLM_API_KEY=your_api_key_here
 
 Users can bring their own API key for OpenAI (`OPENAI_API_KEY`), Anthropic (`ANTHROPIC_API_KEY`), or Google Gemini (`GEMINI_API_KEY`), or pass `LLM_API_KEY`.
 
-### Example Request and Response
+> Note: I use a free tier gemini API key here, so no credit was taken.
 
-**Request:**
+Example request and response payload:
+
 ```http
 POST /leads/source-extract
 Content-Type: application/json
@@ -280,63 +308,11 @@ Content-Type: application/json
 }
 ```
 
-**Response:**
 ```json
 {
   "channel": "Event",
   "detail": "Singapore FinTech Festival 2026 - Booth QR Code"
 }
-```
-
-## Project Organization
-
-```
-├── LICENSE            <- Open-source license if one is chosen
-├── Makefile           <- Makefile with convenience commands like `make data` or `make train`
-├── README.md          <- The top-level README for developers using this project.
-├── data
-│   ├── external       <- Data from third party sources.
-│   ├── interim        <- Intermediate data that has been transformed.
-│   ├── processed      <- The final, canonical data sets for modeling.
-│   └── raw            <- The original, immutable data dump.
-│
-├── docs               <- A default mkdocs project; see www.mkdocs.org for details
-│
-├── models             <- Trained and serialized models, model predictions, or model summaries
-│
-├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
-│                         the creator's initials, and a short `-` delimited description, e.g.
-│                         `1.0-jqp-initial-data-exploration`.
-│
-├── pyproject.toml     <- Project configuration file with package metadata for
-│                         ai_assisted_mini_lead_management_system and configuration for tools like black
-│
-├── references         <- Data dictionaries, manuals, and all other explanatory materials.
-│
-├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-│   └── figures        <- Generated graphics and figures to be used in reporting
-│
-├── requirements.txt   <- The requirements file for reproducing the analysis environment, e.g.
-│                         generated with `pip freeze > requirements.txt`
-│
-├── setup.cfg          <- Configuration file for flake8
-│
-└── ai_assisted_mini_lead_management_system   <- Source code for use in this project.
-    │
-    ├── __init__.py             <- Makes ai_assisted_mini_lead_management_system a Python module
-    │
-    ├── config.py               <- Store useful variables and configuration
-    │
-    ├── dataset.py              <- Scripts to download or generate data
-    │
-    ├── features.py             <- Code to create features for modeling
-    │
-    ├── modeling
-    │   ├── __init__.py
-    │   ├── predict.py          <- Code to run model inference with trained models
-    │   └── train.py            <- Code to train models
-    │
-    └── plots.py                <- Code to create visualizations
 ```
 
 ## Setup and How to run
@@ -375,6 +351,17 @@ npm run dev
 > Note: DB starts automatically. PostgreSQL runs as an embedded instance managed by `pgserver` in the local `pgdata/` directory, and DuckDB for splink dedup runs in-process inside the application.
 
 ## Endpoints
+
+| Method  | Endpoint                   | Description                                 | Parameters / Payload                                 | Response                                                         |
+| :------ | :------------------------- | :------------------------------------------ | :--------------------------------------------------- | :--------------------------------------------------------------- |
+| `GET`   | `/leads`                   | List and search leads with pagination       | `status`, `owner`, `country`, `q`, `limit`, `offset` | Array of lead objects with total count in `X-Total-Count` header |
+| `GET`   | `/leads/{id}`              | Fetch single lead by primary key ID         | `id` (path)                                          | Lead record object or 404 error if not found                     |
+| `PATCH` | `/leads/{id}`              | Update status, owner, or notes              | `id` (path), JSON body with mutable fields           | Updated lead record object                                       |
+| `GET`   | `/leads/export`            | Download filtered leads as CSV              | `status`, `owner`, `country`, `q`                    | Downloadable CSV file attachment (`leads_export.csv`)            |
+| `POST`  | `/leads/ingest`            | Website form submission ingest              | Single or batch JSON form submission payload         | Ingestion status (`created` or `updated`) and lead record        |
+| `POST`  | `/leads/dedupe-candidates` | Run Fellegi-Sunter duplicate clustering     | `threshold` (query, default 0.5), `limit` (query)    | Ranked clusters of likely duplicate lead records                 |
+| `POST`  | `/leads/source-extract`    | Structured AI acquisition source extraction | JSON body with raw `text` notes                      | Extracted acquisition channel and source detail                  |
+| `GET`   | `/dashboard`               | Aggregate lead counts                       | None                                                 | Lead counts grouped by status and acquisition channel            |
 
 ## Test Suites
 

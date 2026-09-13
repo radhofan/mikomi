@@ -26,7 +26,7 @@ def upgrade() -> None:
         sa.Column('company_name', sa.String(length=100), nullable=False, server_default=''),
         sa.Column('email', sa.String(length=100), nullable=False, server_default=''),
         sa.Column('phone_number', sa.String(length=100), nullable=False, server_default=''),
-        sa.Column('phone_digits', sa.Integer(), nullable=False, server_default='0'),
+        sa.Column('phone_digits', sa.BigInteger(), nullable=False, server_default='0'),
         sa.Column('country', sa.String(length=100), nullable=False, server_default=''),
         sa.Column('city', sa.Float(), nullable=True),
         sa.Column('lead_status', sa.String(length=100), nullable=False, server_default=''),

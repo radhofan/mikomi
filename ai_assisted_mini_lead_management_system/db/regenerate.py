@@ -4,8 +4,12 @@ from pathlib import Path
 import alembic.command
 import alembic.config
 from dotenv import load_dotenv
+import pandas as pd
 from pgserver.postgres_server import get_server
 from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
+
+from ai_assisted_mini_lead_management_system.db.models import Lead
 
 PROJ_ROOT = Path(__file__).resolve().parents[2]
 
@@ -22,6 +26,73 @@ def get_db_url() -> str:
     if "1" not in res:
         srv.psql("CREATE DATABASE leads;")
     return srv.get_uri("leads")
+
+
+def seed_database(db_url: str) -> None:
+    csv_path = PROJ_ROOT / "data" / "interim" / "leads_cleaned.csv"
+    if not csv_path.exists():
+        print(f"[WARN] Cleaned CSV not found at {csv_path}")
+        return
+
+    print(f"[INFO] Seeding database from {csv_path}...")
+    df = pd.read_csv(csv_path)
+
+    df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce")
+    df["updated_at"] = pd.to_datetime(df["updated_at"], errors="coerce")
+
+    df["phone_digits"] = df["phone_digits"].fillna(0).astype(int)
+    for col in [
+        "first_name",
+        "last_name",
+        "full_name",
+        "job_title",
+        "company_name",
+        "email",
+        "phone_number",
+        "country",
+        "lead_status",
+        "lifecycle_stage",
+        "original_source",
+        "contact_owner",
+        "notes",
+    ]:
+        if col in df.columns:
+            df[col] = df[col].fillna("").astype(str)
+
+    records = []
+    for _, row in df.iterrows():
+        records.append(
+            {
+                "record_id": int(row["record_id"]),
+                "first_name": row.get("first_name", ""),
+                "last_name": row.get("last_name", ""),
+                "full_name": row.get("full_name", ""),
+                "job_title": row.get("job_title", ""),
+                "company_name": row.get("company_name", ""),
+                "email": row.get("email", ""),
+                "phone_number": row.get("phone_number", ""),
+                "phone_digits": int(row["phone_digits"]),
+                "country": row.get("country", "") or "Unknown",
+                "city": float(row["city"]) if pd.notna(row.get("city")) else None,
+                "lead_status": row.get("lead_status", "") or "New",
+                "lifecycle_stage": row.get("lifecycle_stage", ""),
+                "original_source": row.get("original_source", ""),
+                "contact_owner": row.get("contact_owner", "") or "Unassigned",
+                "created_at": row["created_at"].to_pydatetime() if pd.notna(row["created_at"]) else None,
+                "updated_at": row["updated_at"].to_pydatetime() if pd.notna(row["updated_at"]) else None,
+                "notes": row.get("notes", ""),
+                "source_channel": None,
+                "source_detail": None,
+            }
+        )
+
+    engine = create_engine(db_url)
+    with Session(engine) as session:
+        session.bulk_insert_mappings(Lead, records)
+        session.commit()
+    engine.dispose()
+
+    print(f"[INFO] Successfully inserted {len(records)} leads into database.")
 
 
 def regenerate_database() -> None:
@@ -46,7 +117,9 @@ def regenerate_database() -> None:
 
     print("[INFO] Applying Alembic migrations up to head...")
     alembic.command.upgrade(alembic_cfg, "head")
-    print("[INFO] Database successfully regenerated to latest migration.")
+    print("[INFO] Database schema successfully regenerated.")
+
+    seed_database(resolved_db_url)
 
 
 if __name__ == "__main__":

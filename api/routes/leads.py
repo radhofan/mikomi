@@ -17,6 +17,7 @@ router = APIRouter(prefix="/leads", tags=["leads"])
 # GET /leads
 @router.get("", response_model=List[LeadResponse])
 def list_leads(
+    response: Response,
     status: Optional[str] = Query(None, description="Filter by lead status"),
     owner: Optional[str] = Query(None, description="Filter by contact owner"),
     country: Optional[str] = Query(None, description="Filter by country"),
@@ -44,6 +45,8 @@ def list_leads(
     """
     query = db.query(Lead)
     query = apply_lead_filters(query, status=status, owner=owner, country=country, q=q)
+    total_count = query.count()
+    response.headers["X-Total-Count"] = str(total_count)
     return query.order_by(Lead.id.asc()).offset(offset).limit(limit).all()
 
 
