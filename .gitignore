@@ -193,3 +193,10 @@ pgdata/
 # Node.js
 node_modules/
 frontend/dist/
+
+# Assignment datasets and confidential documents
+*.pdf
+*.docx
+data/raw/*.csv
+data/raw/*.json
+data/interim/*.csv

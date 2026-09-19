@@ -309,8 +309,8 @@ export default function App() {
   return (
     <div className="container">
       <header>
-        <h1>AI-Assisted Lead Management</h1>
-        <p>HubSpot replacement prototype with probabilistic deduplication and AI source extraction</p>
+        <h1>Mikomi</h1>
+        <p>AI-assisted lead management system with probabilistic deduplication and source extraction</p>
       </header>
 
       {/* Top Dashboard Metrics */}
